@@ -1,19 +1,19 @@
-// context/AuthContext.tsx
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { auth, db } from "../lib/firebase"; 
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { set } from "firebase/database";
 
-// We use <any> here to keep things simple for now while you are learning
 const AuthContext = createContext<any>({});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // The missing logout function is right here
+  const logOut = () => signOut(auth);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -36,7 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading }}>
+    <AuthContext.Provider value={{ user, userData, loading, logOut }}>
       {!loading && children}
     </AuthContext.Provider>
   );
