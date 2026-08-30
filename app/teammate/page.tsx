@@ -1,11 +1,13 @@
-// Save this file as: app/teammate/page.tsx  (new folder: app/teammate/)
+// Save this file as: app/teammate/page.tsx  (REPLACES your current app/teammate/page.tsx)
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import TaskCard from "@/components/TaskCard";
 
 interface Task {
   id: string;
@@ -13,6 +15,8 @@ interface Task {
   description: string;
   deadline: string;
   status: "pending" | "completed";
+  projectId: string;
+  projectName: string;
 }
 
 export default function TeammateDashboard() {
@@ -20,8 +24,6 @@ export default function TeammateDashboard() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // GUARD: same idea as the admin page. Without this, an admin (or anyone
-  // guessing the URL) could land on /teammate directly.
   useEffect(() => {
     if (loading) return;
     if (!user) {
@@ -33,10 +35,6 @@ export default function TeammateDashboard() {
     }
   }, [user, userData, loading, router]);
 
-  // The important query for this project: filter tasks SERVER-SIDE with
-  // `where("assignedTo", "==", user.uid)` — never fetch every task in the
-  // collection and filter it in the browser. That would leak every other
-  // teammate's tasks to the client, and doesn't scale.
   useEffect(() => {
     if (!user) return;
     const q = query(
@@ -45,11 +43,7 @@ export default function TeammateDashboard() {
       orderBy("assignedDate", "desc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Task[];
-      setTasks(list);
+      setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Task[]);
     });
     return () => unsubscribe();
   }, [user]);
@@ -57,8 +51,6 @@ export default function TeammateDashboard() {
   const handleMarkComplete = async (taskId: string) => {
     try {
       await updateDoc(doc(db, "tasks", taskId), { status: "completed" });
-      // No manual state update needed — the onSnapshot listener above
-      // receives the change from Firestore and re-renders automatically.
     } catch (error) {
       console.error("Error updating task: ", error);
       alert("Couldn't mark task as complete.");
@@ -69,6 +61,18 @@ export default function TeammateDashboard() {
     await logOut();
     router.push("/login");
   };
+
+  // Group tasks by project — each group also keeps the project's id, so the
+  // heading can link to that project's detail page.
+  const groupedByProject = tasks.reduce<Record<string, { projectId: string; tasks: Task[] }>>(
+    (groups, task) => {
+      const key = task.projectName || "Unassigned";
+      if (!groups[key]) groups[key] = { projectId: task.projectId, tasks: [] };
+      groups[key].tasks.push(task);
+      return groups;
+    },
+    {}
+  );
 
   if (loading || userData?.role !== "teammate") {
     return (
@@ -97,39 +101,20 @@ export default function TeammateDashboard() {
         {tasks.length === 0 ? (
           <p className="text-gray-500 italic">No tasks assigned yet. You're all caught up!</p>
         ) : (
-          <div className="space-y-3">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`p-4 bg-white border rounded shadow-sm border-l-4 ${
-                  task.status === "completed" ? "border-green-400" : "border-yellow-400"
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-lg">{task.title}</h3>
-                    <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                    <p className="text-sm text-gray-500 mt-1">Deadline: {task.deadline}</p>
-                  </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-bold whitespace-nowrap ${
-                      task.status === "completed"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {task.status}
-                  </span>
+          <div className="space-y-6">
+            {Object.entries(groupedByProject).map(([projectName, group]) => (
+              <div key={projectName}>
+                <Link
+                  href={`/teammate/projects/${group.projectId}`}
+                  className="inline-block text-lg font-bold text-gray-700 mb-2 border-b pb-1 hover:text-blue-600 transition"
+                >
+                  {projectName} &rarr;
+                </Link>
+                <div className="space-y-3 mt-2">
+                  {group.tasks.map((task) => (
+                    <TaskCard key={task.id} task={task} onMarkComplete={handleMarkComplete} />
+                  ))}
                 </div>
-
-                {task.status === "pending" && (
-                  <button
-                    onClick={() => handleMarkComplete(task.id)}
-                    className="mt-3 bg-green-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-700 transition"
-                  >
-                    Mark as Completed
-                  </button>
-                )}
               </div>
             ))}
           </div>
