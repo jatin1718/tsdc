@@ -1,27 +1,42 @@
-// Save this file as: app/teammate/page.tsx  (REPLACES your current app/teammate/page.tsx)
+// Save this file as: app/teammate/projects/[projectId]/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, orderBy, onSnapshot, updateDoc } from "firebase/firestore";
 import TaskCard from "@/components/TaskCard";
+import ProjectHeader from "@/components/ProjectHeader";
 
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  techStack?: string;
+  startDate?: string;
+  deadline?: string;
+  status?: "planning" | "active" | "completed";
+  githubLink?: string;
+}
 interface Task {
   id: string;
   title: string;
   description: string;
+  assignedTo: string;
+  assignedToName: string;
   deadline: string;
   status: "pending" | "completed";
-  projectId: string;
-  projectName: string;
 }
 
-export default function TeammateDashboard() {
-  const { user, userData, loading, logOut } = useAuth();
+export default function TeammateProjectDetailPage() {
+  const { user, userData, loading } = useAuth();
   const router = useRouter();
+  const params = useParams();
+  const projectId = params.projectId as string;
+
+  const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => {
@@ -36,17 +51,24 @@ export default function TeammateDashboard() {
   }, [user, userData, loading, router]);
 
   useEffect(() => {
-    if (!user) return;
+    const fetchProject = async () => {
+      const snap = await getDoc(doc(db, "projects", projectId));
+      if (snap.exists()) setProject({ id: snap.id, ...snap.data() } as Project);
+    };
+    fetchProject();
+  }, [projectId]);
+
+  useEffect(() => {
     const q = query(
       collection(db, "tasks"),
-      where("assignedTo", "==", user.uid),
+      where("projectId", "==", projectId),
       orderBy("assignedDate", "desc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Task[]);
     });
     return () => unsubscribe();
-  }, [user]);
+  }, [projectId]);
 
   const handleMarkComplete = async (taskId: string) => {
     try {
@@ -57,22 +79,8 @@ export default function TeammateDashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    await logOut();
-    router.push("/login");
-  };
-
-  // Group tasks by project — each group also keeps the project's id, so the
-  // heading can link to that project's detail page.
-  const groupedByProject = tasks.reduce<Record<string, { projectId: string; tasks: Task[] }>>(
-    (groups, task) => {
-      const key = task.projectName || "Unassigned";
-      if (!groups[key]) groups[key] = { projectId: task.projectId, tasks: [] };
-      groups[key].tasks.push(task);
-      return groups;
-    },
-    {}
-  );
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
+  const totalCount = tasks.length;
 
   if (loading || userData?.role !== "teammate") {
     return (
@@ -84,38 +92,27 @@ export default function TeammateDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-xl p-8">
-        <div className="flex justify-between items-center border-b pb-4 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">My Tasks</h1>
-            <p className="text-gray-500">Logged in as: {userData?.name}</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
-          >
-            Log Out
-          </button>
-        </div>
+      <div className="max-w-4xl mx-auto">
+        <Link href="/teammate" className="text-sm text-blue-600 hover:underline">
+          &larr; My Tasks
+        </Link>
 
+        {project && (
+          <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />
+        )}
+
+        <h2 className="text-xl font-bold text-gray-800 mb-3">All Tasks in This Project</h2>
         {tasks.length === 0 ? (
-          <p className="text-gray-500 italic">No tasks assigned yet. You're all caught up!</p>
+          <p className="text-gray-500 italic">No tasks yet.</p>
         ) : (
-          <div className="space-y-6">
-            {Object.entries(groupedByProject).map(([projectName, group]) => (
-              <div key={projectName}>
-                <Link
-                  href={`/teammate/projects/${group.projectId}`}
-                  className="inline-block text-lg font-bold text-gray-700 mb-2 border-b pb-1 hover:text-blue-600 transition"
-                >
-                  {projectName} &rarr;
-                </Link>
-                <div className="space-y-3 mt-2">
-                  {group.tasks.map((task) => (
-                    <TaskCard key={task.id} task={task} onMarkComplete={handleMarkComplete} />
-                  ))}
-                </div>
-              </div>
+          <div className="space-y-3">
+            {tasks.map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                showAssignee
+                onMarkComplete={task.assignedTo === user?.uid ? handleMarkComplete : undefined}
+              />
             ))}
           </div>
         )}

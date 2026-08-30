@@ -1,4 +1,4 @@
-// Save this file as: app/login/page.tsx
+// Save this file as: app/login/page.tsx  (REPLACES your current login page)
 "use client";
 
 import { useState } from "react";
@@ -12,57 +12,35 @@ import { doc, setDoc } from "firebase/firestore";
 
 export default function LoginPage() {
   const router = useRouter();
-
-  // isSignup toggles between "Login" and "Create Account" mode on the SAME page.
-  // Simpler than two separate pages for a beginner project.
   const [isSignup, setIsSignup] = useState(false);
-
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("teammate"); // default — see note below on why this is a demo-only shortcut
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(""); // clear old error before trying again
+    setError("");
 
     try {
       if (isSignup) {
-        // STEP 1: Create the account in Firebase Authentication.
-        // This returns a "userCredential" object — userCredential.user.uid
-        // is the unique ID Firebase generated for this person.
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const uid = userCredential.user.uid;
 
-        // STEP 2: Save role + profile info in Firestore, using the SAME uid
-        // as the document ID. setDoc (not addDoc) is used here on purpose —
-        // addDoc auto-generates a random ID, but we WANT the ID to be the uid
-        // so that later we can look this user up directly: doc(db, "users", uid)
-        // instead of running a search query for it.
+        // Role is no longer a form choice. Every self-signup becomes a
+        // "teammate" — admin accounts are created ONLY by manually editing
+        // the role field in the Firestore console. This closes the gap where
+        // anyone signing up could make themselves an admin.
         await setDoc(doc(db, "users", uid), {
           name,
           email,
-          role, // "admin" or "teammate" — picked from the dropdown below
+          role: "teammate",
         });
       } else {
-        // Login mode: just verify credentials. No Firestore write needed —
-        // AuthContext.tsx already listens for this and fetches the role automatically.
         await signInWithEmailAndPassword(auth, email, password);
       }
-
-      // Both signup and login end up here. We don't decide admin-vs-teammate
-      // routing on THIS page — that's the next piece we build (a "traffic
-      // controller" on the home page that reads the role from AuthContext
-      // and redirects). For now, just go to "/".
       router.push("/");
     } catch (err: any) {
-      // Firebase throws readable error messages like
-      // "Firebase: Error (auth/email-already-in-use)." — good enough to show directly.
       setError(err.message);
     }
   };
@@ -74,9 +52,7 @@ export default function LoginPage() {
           {isSignup ? "Create Account" : "Log In"}
         </h1>
         <p className="text-gray-500 mb-6">
-          {isSignup
-            ? "Set up your Task Tracker account"
-            : "Welcome back to Task Tracker"}
+          {isSignup ? "Set up your Task Tracker account" : "Welcome back to Task Tracker"}
         </p>
 
         {error && (
@@ -86,12 +62,9 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name + role only needed at signup — no point asking for them at login */}
           {isSignup && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Full Name
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
               <input
                 type="text"
                 value={name}
@@ -103,9 +76,7 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
               type="email"
               value={email}
@@ -116,36 +87,16 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6} // Firebase itself rejects passwords under 6 chars
+              minLength={6}
               className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
-          {isSignup && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Role
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="teammate">Teammate</option>
-                <option value="admin">Admin</option>
-              </select>
-              {/* Interview talking point: letting users self-select "admin" here
-                  is a demo shortcut, not production-safe. Say this out loud if asked. */}
-            </div>
-          )}
 
           <button
             type="submit"
@@ -162,9 +113,7 @@ export default function LoginPage() {
           }}
           className="text-sm text-blue-600 hover:underline mt-4 block text-center w-full"
         >
-          {isSignup
-            ? "Already have an account? Log in"
-            : "No account yet? Sign up"}
+          {isSignup ? "Already have an account? Log in" : "No account yet? Sign up"}
         </button>
       </div>
     </div>

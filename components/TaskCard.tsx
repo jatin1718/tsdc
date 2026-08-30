@@ -1,4 +1,4 @@
-// Save this file as: components/TaskCard.tsx  (new top-level folder: components/)
+// Save this file as: components/TaskCard.tsx  (REPLACES current file)
 "use client";
 
 interface Task {
@@ -6,6 +6,7 @@ interface Task {
   projectName?: string;
   title: string;
   description: string;
+  assignedTo?: string;
   assignedToName?: string;
   deadline: string;
   status: "pending" | "completed";
@@ -13,15 +14,24 @@ interface Task {
 
 interface TaskCardProps {
   task: Task;
-  showProject?: boolean; // show which project this task belongs to (History, Teammate view)
-  showAssignee?: boolean; // show who it's assigned to (Admin views)
-  onMarkComplete?: (taskId: string) => void; // only passed on the Teammate dashboard
+  showProject?: boolean;
+  showAssignee?: boolean;
+  onMarkComplete?: (taskId: string) => void;
+  // Both are optional — only passed on the Admin project-detail page.
+  // History and the Teammate dashboard never pass these, so no edit/delete
+  // buttons ever render there, keeping task management in ONE place.
+  onEdit?: (task: Task) => void;
+  onDelete?: (taskId: string) => void;
 }
 
-// ONE reusable card for displaying a task, used in four different places:
-// project detail, history, and the teammate dashboard. If we ever want to
-// change how a task looks, we change it here once — not in four files.
-export default function TaskCard({ task, showProject, showAssignee, onMarkComplete }: TaskCardProps) {
+export default function TaskCard({
+  task,
+  showProject,
+  showAssignee,
+  onMarkComplete,
+  onEdit,
+  onDelete,
+}: TaskCardProps) {
   return (
     <div
       className={`p-4 bg-white border rounded shadow-sm border-l-4 ${
@@ -49,15 +59,32 @@ export default function TaskCard({ task, showProject, showAssignee, onMarkComple
             Deadline: {task.deadline}
           </p>
         </div>
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
-            task.status === "completed"
-              ? "bg-green-100 text-green-800"
-              : "bg-yellow-100 text-yellow-800"
-          }`}
-        >
-          {task.status}
-        </span>
+
+        <div className="flex flex-col items-end gap-1">
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+              task.status === "completed"
+                ? "bg-green-100 text-green-800"
+                : "bg-yellow-100 text-yellow-800"
+            }`}
+          >
+            {task.status}
+          </span>
+          {(onEdit || onDelete) && (
+            <div className="flex gap-2 text-xs">
+              {onEdit && (
+                <button onClick={() => onEdit(task)} className="text-blue-600 hover:underline">
+                  Edit
+                </button>
+              )}
+              {onDelete && (
+                <button onClick={() => onDelete(task.id)} className="text-red-600 hover:underline">
+                  Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {onMarkComplete && task.status === "pending" && (
