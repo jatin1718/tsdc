@@ -1,18 +1,40 @@
+// Save this file as: context/AuthContext.tsx  (REPLACES current file)
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { auth, db } from "../lib/firebase"; 
+import { auth, db } from "../lib/firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
-const AuthContext = createContext<any>({});
+// Proper shape for what's stored in a users/{uid} Firestore document —
+// replaces the "any" that was here before. Now if anyone types
+// userData.rol (typo) instead of userData.role, TypeScript catches it
+// immediately instead of silently returning undefined at runtime.
+interface UserData {
+  name: string;
+  email: string;
+  role: "admin" | "teammate";
+}
+
+interface AuthContextValue {
+  user: User | null;
+  userData: UserData | null;
+  loading: boolean;
+  logOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue>({
+  user: null,
+  userData: null,
+  loading: true,
+  logOut: async () => {},
+});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // The missing logout function is right here
   const logOut = () => signOut(auth);
 
   useEffect(() => {
@@ -21,9 +43,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(currentUser);
         const userDocRef = doc(db, "users", currentUser.uid);
         const userDocSnap = await getDoc(userDocRef);
-        
+
         if (userDocSnap.exists()) {
-          setUserData(userDocSnap.data());
+          setUserData(userDocSnap.data() as UserData);
         }
       } else {
         setUser(null);

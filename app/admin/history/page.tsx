@@ -1,4 +1,4 @@
-// Save this file as: app/admin/history/page.tsx
+// Save this file as: app/admin/history/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -13,7 +13,9 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  assignedToName: string;
+  assignedTo: string[];
+  assignedToNames: string[];
+  completedBy: string[];
   projectName: string;
   deadline: string;
   status: "pending" | "completed";
