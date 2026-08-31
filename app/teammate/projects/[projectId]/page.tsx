@@ -1,6 +1,4 @@
-// Save this file as: app/teammate/projects/[projectId]/page.tsx
-// (folders: app/teammate/projects/[projectId]/  — the [projectId] folder name
-// is literal, square brackets included)
+// Save this file as: app/teammate/projects/[projectId]/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -26,8 +24,9 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  assignedTo: string;
-  assignedToName: string;
+  assignedTo: string[];
+  assignedToNames: string[];
+  completedBy: string[];
   deadline: string;
   status: "pending" | "completed";
 }
@@ -60,6 +59,8 @@ export default function TeammateProjectDetailPage() {
     fetchProject();
   }, [projectId]);
 
+  // Shows EVERY task in this project (not filtered to this user) so
+  // teammates see full team progress — same as before.
   useEffect(() => {
     const q = query(
       collection(db, "tasks"),
@@ -72,12 +73,19 @@ export default function TeammateProjectDetailPage() {
     return () => unsubscribe();
   }, [projectId]);
 
-  const handleMarkComplete = async (taskId: string) => {
+  const handleMarkMyPartComplete = async (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || !user) return;
+    const newCompletedBy = [...(task.completedBy || []), user.uid];
+    const newStatus = newCompletedBy.length === task.assignedTo.length ? "completed" : "pending";
     try {
-      await updateDoc(doc(db, "tasks", taskId), { status: "completed" });
+      await updateDoc(doc(db, "tasks", taskId), {
+        completedBy: newCompletedBy,
+        status: newStatus,
+      });
     } catch (error) {
       console.error("Error updating task: ", error);
-      alert("Couldn't mark task as complete.");
+      alert("Couldn't mark your part as complete.");
     }
   };
 
@@ -99,9 +107,7 @@ export default function TeammateProjectDetailPage() {
           &larr; My Tasks
         </Link>
 
-        {project && (
-          <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />
-        )}
+        {project && <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />}
 
         <h2 className="text-xl font-bold text-gray-800 mb-3">All Tasks in This Project</h2>
         {tasks.length === 0 ? (
@@ -113,7 +119,8 @@ export default function TeammateProjectDetailPage() {
                 key={task.id}
                 task={task}
                 showAssignee
-                onMarkComplete={task.assignedTo === user?.uid ? handleMarkComplete : undefined}
+                currentUserId={user?.uid}
+                onMarkComplete={handleMarkMyPartComplete}
               />
             ))}
           </div>

@@ -1,4 +1,4 @@
-// Save this file as: app/teammate/page.tsx  (this is the MAIN dashboard — "My Tasks")
+// Save this file as: app/teammate/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -17,6 +17,9 @@ interface Task {
   status: "pending" | "completed";
   projectId: string;
   projectName: string;
+  assignedTo: string[];
+  assignedToNames: string[];
+  completedBy: string[];
 }
 
 export default function TeammateDashboard() {
@@ -35,11 +38,13 @@ export default function TeammateDashboard() {
     }
   }, [user, userData, loading, router]);
 
+  // array-contains: finds every task where THIS user's uid is anywhere in
+  // the assignedTo array — works the same way for solo or shared tasks.
   useEffect(() => {
     if (!user) return;
     const q = query(
       collection(db, "tasks"),
-      where("assignedTo", "==", user.uid),
+      where("assignedTo", "array-contains", user.uid),
       orderBy("assignedDate", "desc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -48,12 +53,21 @@ export default function TeammateDashboard() {
     return () => unsubscribe();
   }, [user]);
 
-  const handleMarkComplete = async (taskId: string) => {
+  // Marks only the CURRENT user's own part as done. If everyone assigned
+  // has now done their part, the task's overall status flips to "completed".
+  const handleMarkMyPartComplete = async (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || !user) return;
+    const newCompletedBy = [...(task.completedBy || []), user.uid];
+    const newStatus = newCompletedBy.length === task.assignedTo.length ? "completed" : "pending";
     try {
-      await updateDoc(doc(db, "tasks", taskId), { status: "completed" });
+      await updateDoc(doc(db, "tasks", taskId), {
+        completedBy: newCompletedBy,
+        status: newStatus,
+      });
     } catch (error) {
       console.error("Error updating task: ", error);
-      alert("Couldn't mark task as complete.");
+      alert("Couldn't mark your part as complete.");
     }
   };
 
@@ -62,8 +76,6 @@ export default function TeammateDashboard() {
     router.push("/login");
   };
 
-  // Group tasks by project — each group also keeps the project's id, so the
-  // heading can link to that project's detail page.
   const groupedByProject = tasks.reduce<Record<string, { projectId: string; tasks: Task[] }>>(
     (groups, task) => {
       const key = task.projectName || "Unassigned";
@@ -90,10 +102,7 @@ export default function TeammateDashboard() {
             <h1 className="text-3xl font-bold text-gray-800">My Tasks</h1>
             <p className="text-gray-500">Logged in as: {userData?.name}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
-          >
+          <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition">
             Log Out
           </button>
         </div>
@@ -112,7 +121,12 @@ export default function TeammateDashboard() {
                 </Link>
                 <div className="space-y-3 mt-2">
                   {group.tasks.map((task) => (
-                    <TaskCard key={task.id} task={task} onMarkComplete={handleMarkComplete} />
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      currentUserId={user?.uid}
+                      onMarkComplete={handleMarkMyPartComplete}
+                    />
                   ))}
                 </div>
               </div>

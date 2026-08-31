@@ -6,8 +6,9 @@ interface Task {
   projectName?: string;
   title: string;
   description: string;
-  assignedTo?: string;
-  assignedToName?: string;
+  assignedTo?: string[]; // array of teammate UIDs — a task can now have multiple contributors
+  assignedToNames?: string[]; // parallel array — assignedToNames[i] is the name for assignedTo[i]
+  completedBy?: string[]; // UIDs of contributors who've marked THEIR OWN part done
   deadline: string;
   status: "pending" | "completed";
 }
@@ -15,11 +16,9 @@ interface Task {
 interface TaskCardProps {
   task: Task;
   showProject?: boolean;
-  showAssignee?: boolean;
-  onMarkComplete?: (taskId: string) => void;
-  // Both are optional — only passed on the Admin project-detail page.
-  // History and the Teammate dashboard never pass these, so no edit/delete
-  // buttons ever render there, keeping task management in ONE place.
+  showAssignee?: boolean; // force-show contributor chips even for a single assignee (used in Admin/History)
+  currentUserId?: string; // used to decide if the "Mark My Part" button applies to the person viewing this card
+  onMarkComplete?: (taskId: string) => void; // marks the CURRENT user's own part as done
   onEdit?: (task: Task) => void;
   onDelete?: (taskId: string) => void;
 }
@@ -28,10 +27,24 @@ export default function TaskCard({
   task,
   showProject,
   showAssignee,
+  currentUserId,
   onMarkComplete,
   onEdit,
   onDelete,
 }: TaskCardProps) {
+  const assignedTo = task.assignedTo || [];
+  const completedBy = task.completedBy || [];
+  const isMultiAssignee = assignedTo.length > 1;
+
+  // Chips are always shown for multi-assignee tasks (useful team context),
+  // and shown for single-assignee tasks only when explicitly requested
+  // (Admin/History views) — a teammate's own single-assignee task doesn't
+  // need an "Assigned to: you" chip cluttering their own dashboard.
+  const showChips = showAssignee || isMultiAssignee;
+
+  const currentUserIsContributor = !!currentUserId && assignedTo.includes(currentUserId);
+  const currentUserAlreadyDone = !!currentUserId && completedBy.includes(currentUserId);
+
   return (
     <div
       className={`p-4 bg-white border rounded shadow-sm border-l-4 ${
@@ -46,18 +59,28 @@ export default function TaskCard({
             </span>
           )}
           <h3 className="font-bold text-lg text-gray-800">{task.title}</h3>
-          {task.description && (
-            <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+          {task.description && <p className="text-sm text-gray-600 mt-1">{task.description}</p>}
+          <p className="text-sm text-gray-500 mt-1">Deadline: {task.deadline}</p>
+
+          {showChips && assignedTo.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {assignedTo?.map((uid, i) => {
+                const name = task.assignedToNames?.[i] || "Unknown";
+                const done = completedBy.includes(uid);
+                return (
+                  <span
+                    key={uid}
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      done ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {done ? "✓ " : ""}
+                    {name}
+                  </span>
+                );
+              })}
+            </div>
           )}
-          <p className="text-sm text-gray-500 mt-1">
-            {showAssignee && task.assignedToName && (
-              <>
-                Assigned to: <span className="font-medium text-gray-700">{task.assignedToName}</span>
-                {" · "}
-              </>
-            )}
-            Deadline: {task.deadline}
-          </p>
         </div>
 
         <div className="flex flex-col items-end gap-1">
@@ -70,6 +93,11 @@ export default function TaskCard({
           >
             {task.status}
           </span>
+          {isMultiAssignee && (
+            <span className="text-xs text-gray-400 whitespace-nowrap">
+              {completedBy.length}/{assignedTo.length} done
+            </span>
+          )}
           {(onEdit || onDelete) && (
             <div className="flex gap-2 text-xs">
               {onEdit && (
@@ -87,12 +115,12 @@ export default function TaskCard({
         </div>
       </div>
 
-      {onMarkComplete && task.status === "pending" && (
+      {onMarkComplete && currentUserIsContributor && !currentUserAlreadyDone && (
         <button
           onClick={() => onMarkComplete(task.id)}
           className="mt-3 bg-green-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-700 transition"
         >
-          Mark as Completed
+          {isMultiAssignee ? "Mark My Part as Done" : "Mark as Completed"}
         </button>
       )}
     </div>

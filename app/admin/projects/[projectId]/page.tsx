@@ -44,8 +44,9 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  assignedTo?: string;
-  assignedToName?: string;
+  assignedTo?: string[];
+  assignedToNames?: string[];
+  completedBy?: string[];
   deadline: string;
   status: "pending" | "completed";
 }
@@ -60,15 +61,13 @@ export default function ProjectDetailPage() {
   const [teammates, setTeammates] = useState<Teammate[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  // Task form state
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assignedTo, setAssignedTo] = useState("");
+  const [assignedTo, setAssignedTo] = useState<string[]>([]); // now an array — multiple teammates selectable
   const [taskDeadline, setTaskDeadline] = useState("");
 
-  // Project-edit form state
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [pName, setPName] = useState("");
   const [pDescription, setPDescription] = useState("");
@@ -120,49 +119,60 @@ export default function ProjectDetailPage() {
     return () => unsubscribe();
   }, [projectId]);
 
-  // ---------- TASK: create or edit (same form, same handler) ----------
+  // ---------- TASK: create or edit ----------
   const resetTaskForm = () => {
     setTitle("");
     setDescription("");
-    setAssignedTo("");
+    setAssignedTo([]);
     setTaskDeadline("");
     setEditingTaskId(null);
     setShowTaskForm(false);
+  };
+
+  const toggleAssignee = (uid: string) => {
+    setAssignedTo((prev) => (prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]));
   };
 
   const handleEditTaskClick = (task: Task) => {
     setEditingTaskId(task.id);
     setTitle(task.title);
     setDescription(task.description);
-    setAssignedTo(task.assignedTo?? "");
+    setAssignedTo(task.assignedTo || []);
     setTaskDeadline(task.deadline);
     setShowTaskForm(true);
   };
 
   const handleSubmitTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !assignedTo || !taskDeadline || !project) return;
-    const teammate = teammates.find((t) => t.uid === assignedTo);
+    if (!title || assignedTo.length === 0 || !taskDeadline || !project) return;
+
+    const assignedToNames = assignedTo.map((uid) => teammates.find((t) => t.uid === uid)?.name || "Unknown");
 
     try {
       if (editingTaskId) {
-        // EDIT mode: update the existing doc. We deliberately do NOT touch
-        // `status` here — editing a task's details shouldn't accidentally
-        // reset its completion state.
+        // EDIT mode: if someone was removed from assignedTo, they should drop
+        // out of completedBy too — otherwise a removed person's old "done"
+        // could count toward a status they're no longer part of.
+        const currentTask = tasks.find((t) => t.id === editingTaskId);
+        const newCompletedBy = (currentTask?.completedBy || []).filter((uid) => assignedTo.includes(uid));
+        const newStatus = newCompletedBy.length === assignedTo.length ? "completed" : "pending";
+
         await updateDoc(doc(db, "tasks", editingTaskId), {
           title,
           description,
           assignedTo,
-          assignedToName: teammate?.name || "",
+          assignedToNames,
           deadline: taskDeadline,
+          completedBy: newCompletedBy,
+          status: newStatus,
         });
       } else {
-        // CREATE mode
         await addDoc(collection(db, "tasks"), {
           title,
           description,
           assignedTo,
-          assignedToName: teammate?.name || "",
+          assignedToNames,
+          completedBy: [], // nobody has contributed yet
           assignedBy: user?.uid,
           projectId: project.id,
           projectName: project.name,
@@ -214,10 +224,16 @@ export default function ProjectDetailPage() {
         status: pStatus,
         githubLink: pGithubLink,
       });
-      // Local state won't auto-refresh (project is fetched once, not via
-      // onSnapshot), so we update it directly here to reflect the edit
-      // immediately without needing a page refresh.
-      setProject({ id: projectId, name: pName, description: pDescription, techStack: pTechStack, startDate: pStartDate, deadline: pDeadline, status: pStatus, githubLink: pGithubLink });
+      setProject({
+        id: projectId,
+        name: pName,
+        description: pDescription,
+        techStack: pTechStack,
+        startDate: pStartDate,
+        deadline: pDeadline,
+        status: pStatus,
+        githubLink: pGithubLink,
+      });
       setShowProjectForm(false);
     } catch (error) {
       console.error("Error updating project: ", error);
@@ -234,14 +250,8 @@ export default function ProjectDetailPage() {
     )
       return;
     try {
-      // writeBatch groups multiple writes into ONE atomic operation — either
-      // everything here succeeds, or none of it does. Without this, deleting
-      // tasks one-by-one in a loop could fail halfway through (e.g. network
-      // drop) and leave the project gone but some tasks still orphaned.
       const batch = writeBatch(db);
-      tasks.forEach((task) => {
-        batch.delete(doc(db, "tasks", task.id));
-      });
+      tasks.forEach((task) => batch.delete(doc(db, "tasks", task.id)));
       batch.delete(doc(db, "projects", projectId));
       await batch.commit();
       router.push("/admin");
@@ -339,9 +349,7 @@ export default function ProjectDetailPage() {
           </form>
         )}
 
-        {project && (
-          <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />
-        )}
+        {project && <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />}
 
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800">Tasks</h2>
@@ -366,16 +374,33 @@ export default function ProjectDetailPage() {
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
                 className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assign To</label>
-              <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} required
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500">
-                <option value="">Select a teammate</option>
-                {teammates.map((t) => (
-                  <option key={t.uid} value={t.uid}>{t.name} ({t.email})</option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Assign To <span className="text-gray-400 font-normal">(select one or more)</span>
+              </label>
+              {teammates.length === 0 ? (
+                <p className="text-sm text-orange-600">No teammates found — sign up a teammate account first.</p>
+              ) : (
+                <div className="space-y-1 border rounded p-2 max-h-40 overflow-y-auto">
+                  {teammates.map((t) => (
+                    <label key={t.uid} className="flex items-center gap-2 text-sm cursor-pointer p-1 hover:bg-gray-50 rounded">
+                      <input
+                        type="checkbox"
+                        checked={assignedTo.includes(t.uid)}
+                        onChange={() => toggleAssignee(t.uid)}
+                        className="rounded"
+                      />
+                      {t.name} ({t.email})
+                    </label>
+                  ))}
+                </div>
+              )}
+              {assignedTo.length === 0 && (
+                <p className="text-xs text-orange-600 mt-1">Select at least one teammate.</p>
+              )}
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
               <input type="date" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} required
@@ -397,13 +422,7 @@ export default function ProjectDetailPage() {
         ) : (
           <div className="space-y-3">
             {tasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                showAssignee
-                onEdit={handleEditTaskClick}
-                onDelete={handleDeleteTask}
-              />
+              <TaskCard key={task.id} task={task} showAssignee onEdit={handleEditTaskClick} onDelete={handleDeleteTask} />
             ))}
           </div>
         )}
