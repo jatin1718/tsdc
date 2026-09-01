@@ -1,3 +1,4 @@
+// Save this file as: app/teammate/projects/[projectId]/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -58,8 +59,14 @@ export default function TeammateProjectDetailPage() {
     fetchProject();
   }, [projectId]);
 
+  // Shows EVERY task in this project (not filtered to this user) so
+  // teammates see full team progress — same as before.
   useEffect(() => {
-    const q = query(collection(db, "tasks"), where("projectId", "==", projectId), orderBy("assignedDate", "desc"));
+    const q = query(
+      collection(db, "tasks"),
+      where("projectId", "==", projectId),
+      orderBy("assignedDate", "desc")
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Task[]);
     });
@@ -72,7 +79,10 @@ export default function TeammateProjectDetailPage() {
     const newCompletedBy = [...(task.completedBy || []), user.uid];
     const newStatus = newCompletedBy.length === task.assignedTo.length ? "completed" : "pending";
     try {
-      await updateDoc(doc(db, "tasks", taskId), { completedBy: newCompletedBy, status: newStatus });
+      await updateDoc(doc(db, "tasks", taskId), {
+        completedBy: newCompletedBy,
+        status: newStatus,
+      });
     } catch (error) {
       console.error("Error updating task: ", error);
       alert("Couldn't mark your part as complete.");
@@ -85,37 +95,37 @@ export default function TeammateProjectDetailPage() {
   if (loading || userData?.role !== "teammate") {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-zinc-500">Loading...</p>
+        <p className="text-gray-500">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50">
-      <div className="bg-white border-b border-zinc-200">
-        <div className="max-w-3xl mx-auto px-6 h-16 flex items-center">
-          <span className="font-semibold text-zinc-900 tracking-tight">Task Tracker</span>
-        </div>
-      </div>
-
-      <main className="max-w-3xl mx-auto px-6 py-8">
-        <Link href="/teammate" className="text-sm text-indigo-600 hover:underline font-medium">
+    <div className="min-h-screen bg-gray-100 p-8">
+      <div className="max-w-4xl mx-auto">
+        <Link href="/teammate" className="text-sm text-blue-600 hover:underline">
           &larr; My Tasks
         </Link>
 
         {project && <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />}
 
-        <h2 className="text-lg font-semibold text-zinc-900 mb-3">All Tasks in This Project</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-3">All Tasks in This Project</h2>
         {tasks.length === 0 ? (
-          <p className="text-zinc-500 italic">No tasks yet.</p>
+          <p className="text-gray-500 italic">No tasks yet.</p>
         ) : (
           <div className="space-y-3">
             {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} showAssignee currentUserId={user?.uid} onMarkComplete={handleMarkMyPartComplete} />
+              <TaskCard
+                key={task.id}
+                task={task}
+                showAssignee
+                currentUserId={user?.uid}
+                onMarkComplete={handleMarkMyPartComplete}
+              />
             ))}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
