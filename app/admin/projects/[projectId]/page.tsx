@@ -1,4 +1,3 @@
-// Save this file as: app/admin/projects/[projectId]/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,7 +20,7 @@ import {
   getDocs,
   writeBatch,
 } from "firebase/firestore";
-import AdminNav from "@/components/AdminNav";
+import Sidebar from "@/components/Sidebar";
 import TaskCard from "@/components/TaskCard";
 import ProjectHeader from "@/components/ProjectHeader";
 
@@ -65,7 +64,7 @@ export default function ProjectDetailPage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [assignedTo, setAssignedTo] = useState<string[]>([]); // now an array — multiple teammates selectable
+  const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [taskDeadline, setTaskDeadline] = useState("");
 
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -100,26 +99,19 @@ export default function ProjectDetailPage() {
     const fetchTeammates = async () => {
       const q = query(collection(db, "users"), where("role", "==", "teammate"));
       const snapshot = await getDocs(q);
-      setTeammates(
-        snapshot.docs.map((d) => ({ uid: d.id, name: d.data().name, email: d.data().email }))
-      );
+      setTeammates(snapshot.docs.map((d) => ({ uid: d.id, name: d.data().name, email: d.data().email })));
     };
     fetchTeammates();
   }, []);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "tasks"),
-      where("projectId", "==", projectId),
-      orderBy("assignedDate", "desc")
-    );
+    const q = query(collection(db, "tasks"), where("projectId", "==", projectId), orderBy("assignedDate", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Task[]);
     });
     return () => unsubscribe();
   }, [projectId]);
 
-  // ---------- TASK: create or edit ----------
   const resetTaskForm = () => {
     setTitle("");
     setDescription("");
@@ -145,18 +137,13 @@ export default function ProjectDetailPage() {
   const handleSubmitTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || assignedTo.length === 0 || !taskDeadline || !project) return;
-
     const assignedToNames = assignedTo.map((uid) => teammates.find((t) => t.uid === uid)?.name || "Unknown");
 
     try {
       if (editingTaskId) {
-        // EDIT mode: if someone was removed from assignedTo, they should drop
-        // out of completedBy too — otherwise a removed person's old "done"
-        // could count toward a status they're no longer part of.
         const currentTask = tasks.find((t) => t.id === editingTaskId);
         const newCompletedBy = (currentTask?.completedBy || []).filter((uid) => assignedTo.includes(uid));
         const newStatus = newCompletedBy.length === assignedTo.length ? "completed" : "pending";
-
         await updateDoc(doc(db, "tasks", editingTaskId), {
           title,
           description,
@@ -172,7 +159,7 @@ export default function ProjectDetailPage() {
           description,
           assignedTo,
           assignedToNames,
-          completedBy: [], // nobody has contributed yet
+          completedBy: [],
           assignedBy: user?.uid,
           projectId: project.id,
           projectName: project.name,
@@ -198,7 +185,6 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // ---------- PROJECT: edit ----------
   const handleEditProjectClick = () => {
     if (!project) return;
     setPName(project.name);
@@ -241,14 +227,8 @@ export default function ProjectDetailPage() {
     }
   };
 
-  // ---------- PROJECT: delete (cascades to its tasks) ----------
   const handleDeleteProject = async () => {
-    if (
-      !window.confirm(
-        `Delete "${project?.name}" and all ${tasks.length} of its tasks? This cannot be undone.`
-      )
-    )
-      return;
+    if (!window.confirm(`Delete "${project?.name}" and all ${tasks.length} of its tasks? This cannot be undone.`)) return;
     try {
       const batch = writeBatch(db);
       tasks.forEach((task) => batch.delete(doc(db, "tasks", task.id)));
@@ -264,169 +244,161 @@ export default function ProjectDetailPage() {
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const totalCount = tasks.length;
 
+  const inputClass =
+    "w-full p-2 border border-zinc-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none";
+  const labelClass = "block text-sm font-medium text-zinc-700 mb-1";
+
   if (loading || userData?.role !== "admin") {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-zinc-500">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <AdminNav />
-      <div className="max-w-5xl mx-auto px-4 pb-8">
-        <div className="flex justify-between items-center">
-          <Link href="/admin" className="text-sm text-blue-600 hover:underline">
-            &larr; All Projects
-          </Link>
-          {project && (
-            <div className="flex gap-3 text-sm">
-              <button onClick={handleEditProjectClick} className="text-blue-600 hover:underline font-medium">
-                Edit Project
-              </button>
-              <button onClick={handleDeleteProject} className="text-red-600 hover:underline font-medium">
-                Delete Project
-              </button>
+    <div className="min-h-screen flex bg-zinc-50">
+      <Sidebar />
+      <main className="flex-1 px-8 py-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex justify-between items-center">
+            <Link href="/admin" className="text-sm text-indigo-600 hover:underline font-medium">
+              &larr; All Projects
+            </Link>
+            {project && (
+              <div className="flex gap-4 text-sm">
+                <button onClick={handleEditProjectClick} className="text-indigo-600 hover:underline font-medium">
+                  Edit Project
+                </button>
+                <button onClick={handleDeleteProject} className="text-red-600 hover:underline font-medium">
+                  Delete Project
+                </button>
+              </div>
+            )}
+          </div>
+
+          {showProjectForm && (
+            <form onSubmit={handleUpdateProject} className="bg-white p-6 rounded-lg border border-zinc-200 mt-3 mb-6 space-y-4">
+              <h2 className="font-semibold text-zinc-900">Edit Project</h2>
+              <div>
+                <label className={labelClass}>Project Name</label>
+                <input type="text" value={pName} onChange={(e) => setPName(e.target.value)} required className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Description</label>
+                <textarea value={pDescription} onChange={(e) => setPDescription(e.target.value)} rows={3} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Tech Stack (comma-separated)</label>
+                <input type="text" value={pTechStack} onChange={(e) => setPTechStack(e.target.value)} className={inputClass} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Start Date</label>
+                  <input type="date" value={pStartDate} onChange={(e) => setPStartDate(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Deadline</label>
+                  <input type="date" value={pDeadline} onChange={(e) => setPDeadline(e.target.value)} className={inputClass} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Status</label>
+                  <select value={pStatus} onChange={(e) => setPStatus(e.target.value as "planning" | "active" | "completed")} className={inputClass}>
+                    <option value="planning">Planning</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>GitHub Link</label>
+                  <input type="url" value={pGithubLink} onChange={(e) => setPGithubLink(e.target.value)} className={inputClass} />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition">
+                  Save Changes
+                </button>
+                <button type="button" onClick={() => setShowProjectForm(false)} className="px-4 py-2 rounded-md border border-zinc-300 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {project && <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />}
+
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-zinc-900">Tasks</h2>
+            <button
+              onClick={() => (showTaskForm ? resetTaskForm() : setShowTaskForm(true))}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition"
+            >
+              {showTaskForm ? "Cancel" : "New Task"}
+            </button>
+          </div>
+
+          {showTaskForm && (
+            <form onSubmit={handleSubmitTask} className="bg-white p-6 rounded-lg border border-zinc-200 mb-6 space-y-4">
+              <h3 className="font-semibold text-zinc-900">{editingTaskId ? "Edit Task" : "New Task"}</h3>
+              <div>
+                <label className={labelClass}>Title</label>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Description</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-2">
+                  Assign To <span className="text-zinc-400 font-normal">(select one or more)</span>
+                </label>
+                {teammates.length === 0 ? (
+                  <p className="text-sm text-amber-600">No teammates found — sign up a teammate account first.</p>
+                ) : (
+                  <div className="space-y-1 border border-zinc-200 rounded-md p-2 max-h-40 overflow-y-auto">
+                    {teammates.map((t) => (
+                      <label key={t.uid} className="flex items-center gap-2 text-sm cursor-pointer p-1.5 hover:bg-zinc-50 rounded">
+                        <input
+                          type="checkbox"
+                          checked={assignedTo.includes(t.uid)}
+                          onChange={() => toggleAssignee(t.uid)}
+                          className="rounded accent-indigo-600"
+                        />
+                        {t.name} ({t.email})
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {assignedTo.length === 0 && <p className="text-xs text-amber-600 mt-1">Select at least one teammate.</p>}
+              </div>
+              <div>
+                <label className={labelClass}>Deadline</label>
+                <input type="date" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} required className={inputClass} />
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700 transition">
+                  {editingTaskId ? "Update Task" : "Assign Task"}
+                </button>
+                <button type="button" onClick={resetTaskForm} className="px-4 py-2 rounded-md border border-zinc-300 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {tasks.length === 0 ? (
+            <p className="text-zinc-500 italic">No tasks in this project yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {tasks.map((task) => (
+                <TaskCard key={task.id} task={task} showAssignee onEdit={handleEditTaskClick} onDelete={handleDeleteTask} />
+              ))}
             </div>
           )}
         </div>
-
-        {showProjectForm && (
-          <form onSubmit={handleUpdateProject} className="bg-white p-6 rounded-lg border shadow-sm mt-3 mb-6 space-y-4">
-            <h2 className="font-bold text-gray-800">Edit Project</h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
-              <input type="text" value={pName} onChange={(e) => setPName(e.target.value)} required
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea value={pDescription} onChange={(e) => setPDescription(e.target.value)} rows={3}
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tech Stack (comma-separated)</label>
-              <input type="text" value={pTechStack} onChange={(e) => setPTechStack(e.target.value)}
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                <input type="date" value={pStartDate} onChange={(e) => setPStartDate(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-                <input type="date" value={pDeadline} onChange={(e) => setPDeadline(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select value={pStatus} onChange={(e) => setPStatus(e.target.value as "planning" | "active" | "completed")}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500">
-                  <option value="planning">Planning</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">GitHub Link</label>
-                <input type="url" value={pGithubLink} onChange={(e) => setPGithubLink(e.target.value)}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition">
-                Save Changes
-              </button>
-              <button type="button" onClick={() => setShowProjectForm(false)} className="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50 transition">
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {project && <ProjectHeader project={project} completedCount={completedCount} totalCount={totalCount} />}
-
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">Tasks</h2>
-          <button
-            onClick={() => (showTaskForm ? resetTaskForm() : setShowTaskForm(true))}
-            className="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 transition"
-          >
-            {showTaskForm ? "Cancel" : "+ New Task"}
-          </button>
-        </div>
-
-        {showTaskForm && (
-          <form onSubmit={handleSubmitTask} className="bg-white p-6 rounded-lg border shadow-sm mb-6 space-y-4">
-            <h3 className="font-bold text-gray-800">{editingTaskId ? "Edit Task" : "New Task"}</h3>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Assign To <span className="text-gray-400 font-normal">(select one or more)</span>
-              </label>
-              {teammates.length === 0 ? (
-                <p className="text-sm text-orange-600">No teammates found — sign up a teammate account first.</p>
-              ) : (
-                <div className="space-y-1 border rounded p-2 max-h-40 overflow-y-auto">
-                  {teammates.map((t) => (
-                    <label key={t.uid} className="flex items-center gap-2 text-sm cursor-pointer p-1 hover:bg-gray-50 rounded">
-                      <input
-                        type="checkbox"
-                        checked={assignedTo.includes(t.uid)}
-                        onChange={() => toggleAssignee(t.uid)}
-                        className="rounded"
-                      />
-                      {t.name} ({t.email})
-                    </label>
-                  ))}
-                </div>
-              )}
-              {assignedTo.length === 0 && (
-                <p className="text-xs text-orange-600 mt-1">Select at least one teammate.</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
-              <input type="date" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} required
-                className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="flex gap-3">
-              <button type="submit" className="bg-blue-600 text-white font-bold px-4 py-2 rounded hover:bg-blue-700 transition">
-                {editingTaskId ? "Update Task" : "Assign Task"}
-              </button>
-              <button type="button" onClick={resetTaskForm} className="px-4 py-2 rounded border text-gray-600 hover:bg-gray-50 transition">
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {tasks.length === 0 ? (
-          <p className="text-gray-500 italic">No tasks in this project yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} showAssignee onEdit={handleEditTaskClick} onDelete={handleDeleteTask} />
-            ))}
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   );
 }

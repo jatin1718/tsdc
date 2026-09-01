@@ -1,4 +1,3 @@
-// Save this file as: app/teammate/page.tsx  (REPLACES current file)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -38,33 +37,22 @@ export default function TeammateDashboard() {
     }
   }, [user, userData, loading, router]);
 
-  // array-contains: finds every task where THIS user's uid is anywhere in
-  // the assignedTo array — works the same way for solo or shared tasks.
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, "tasks"),
-      where("assignedTo", "array-contains", user.uid),
-      orderBy("assignedDate", "desc")
-    );
+    const q = query(collection(db, "tasks"), where("assignedTo", "array-contains", user.uid), orderBy("assignedDate", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setTasks(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) as Task[]);
     });
     return () => unsubscribe();
   }, [user]);
 
-  // Marks only the CURRENT user's own part as done. If everyone assigned
-  // has now done their part, the task's overall status flips to "completed".
   const handleMarkMyPartComplete = async (taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task || !user) return;
     const newCompletedBy = [...(task.completedBy || []), user.uid];
     const newStatus = newCompletedBy.length === task.assignedTo.length ? "completed" : "pending";
     try {
-      await updateDoc(doc(db, "tasks", taskId), {
-        completedBy: newCompletedBy,
-        status: newStatus,
-      });
+      await updateDoc(doc(db, "tasks", taskId), { completedBy: newCompletedBy, status: newStatus });
     } catch (error) {
       console.error("Error updating task: ", error);
       alert("Couldn't mark your part as complete.");
@@ -76,64 +64,63 @@ export default function TeammateDashboard() {
     router.push("/login");
   };
 
-  const groupedByProject = tasks.reduce<Record<string, { projectId: string; tasks: Task[] }>>(
-    (groups, task) => {
-      const key = task.projectName || "Unassigned";
-      if (!groups[key]) groups[key] = { projectId: task.projectId, tasks: [] };
-      groups[key].tasks.push(task);
-      return groups;
-    },
-    {}
-  );
+  const groupedByProject = tasks.reduce<Record<string, { projectId: string; tasks: Task[] }>>((groups, task) => {
+    const key = task.projectName || "Unassigned";
+    if (!groups[key]) groups[key] = { projectId: task.projectId, tasks: [] };
+    groups[key].tasks.push(task);
+    return groups;
+  }, {});
 
   if (loading || userData?.role !== "teammate") {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-zinc-500">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-xl p-8">
-        <div className="flex justify-between items-center border-b pb-4 mb-6">
+    <div className="min-h-screen bg-zinc-50">
+      <div className="bg-white border-b border-zinc-200">
+        <div className="max-w-3xl mx-auto px-6 h-16 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">My Tasks</h1>
-            <p className="text-gray-500">Logged in as: {userData?.name}</p>
+            <span className="font-semibold text-zinc-900 tracking-tight">Task Tracker</span>
+            <span className="text-sm text-zinc-400 ml-2">{userData?.name}</span>
           </div>
-          <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition">
-            Log Out
+          <button
+            onClick={handleLogout}
+            className="text-sm font-medium text-zinc-600 hover:text-red-600 px-3 py-1.5 rounded-md hover:bg-zinc-50 transition"
+          >
+            Log out
           </button>
         </div>
+      </div>
+
+      <main className="max-w-3xl mx-auto px-6 py-8">
+        <h1 className="text-xl font-semibold text-zinc-900 tracking-tight mb-6">My Tasks</h1>
 
         {tasks.length === 0 ? (
-          <p className="text-gray-500 italic">No tasks assigned yet. You're all caught up!</p>
+          <p className="text-zinc-500 italic">No tasks assigned yet. You're all caught up!</p>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {Object.entries(groupedByProject).map(([projectName, group]) => (
               <div key={projectName}>
                 <Link
                   href={`/teammate/projects/${group.projectId}`}
-                  className="inline-block text-lg font-bold text-gray-700 mb-2 border-b pb-1 hover:text-blue-600 transition"
+                  className="inline-block text-sm font-semibold text-zinc-700 mb-3 pb-1.5 border-b border-zinc-200 hover:text-indigo-600 transition"
                 >
-                  {projectName} &rarr;
+                  {projectName}
                 </Link>
-                <div className="space-y-3 mt-2">
+                <div className="space-y-3">
                   {group.tasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      currentUserId={user?.uid}
-                      onMarkComplete={handleMarkMyPartComplete}
-                    />
+                    <TaskCard key={task.id} task={task} currentUserId={user?.uid} onMarkComplete={handleMarkMyPartComplete} />
                   ))}
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
